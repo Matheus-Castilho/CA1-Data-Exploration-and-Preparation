@@ -185,3 +185,63 @@ q1_yearly %>% filter(year %in% c(2000, 2023))
 # quartile stayed around 62-63%. Even so, in 2023 half of countries still produced less than
 # about 27% of their electricity from renewables. 2024 was excluded because only 55
 # countries remained after cleaning, so its median is not comparable.
+
+
+# Q2. How does the electricity mix differ between the most and least
+#     renewable countries?
+
+# 4.2a Build one row per country: average over the latest full years (2019-2023)
+#      (2024 is excluded, see the note under Q1)
+q2_mix <- c("coal_share_elec", "gas_share_elec", "oil_share_elec", "nuclear_share_elec",
+            "hydro_share_elec", "wind_share_elec", "solar_share_elec",
+            "other_renewables_share_elec")
+
+q2_country <- df_model %>%
+  filter(year %in% 2019:2023) %>%
+  group_by(country) %>%
+  summarise(renewables = mean(renewables_share_elec),
+            avg_generation = mean(electricity_generation),   # TWh
+            across(all_of(q2_mix), mean)) %>%
+  # Many tiny territories sit at exactly 0% or 100% (e.g. 0.01 TWh islands), which would
+  # make the top/bottom 10 arbitrary, so we keep countries generating at least 5 TWh.
+  filter(avg_generation >= 5)
+nrow(q2_country)                              # countries kept
+
+# 4.2b Top 10 and bottom 10 countries by renewable share
+q2_groups <- bind_rows(
+  q2_country %>% slice_max(renewables, n = 10, with_ties = FALSE) %>%
+    mutate(group = "Top 10 renewable"),
+  q2_country %>% slice_min(renewables, n = 10, with_ties = FALSE) %>%
+    mutate(group = "Bottom 10 renewable")
+)
+
+# 4.2c Plot the mix of each country as a stacked bar
+q2_plot_data <- q2_groups %>%
+  pivot_longer(all_of(q2_mix), names_to = "source", values_to = "share") %>%
+  mutate(source = str_remove(source, "_share_elec"),
+         country = fct_reorder(country, renewables),
+         group = factor(group, levels = c("Top 10 renewable", "Bottom 10 renewable")))
+
+p_q2 <- ggplot(q2_plot_data, aes(x = share, y = country, fill = source)) +
+  geom_col() +
+  facet_wrap(~ group, scales = "free_y") +
+  scale_fill_brewer(palette = "Paired") +
+  labs(title = "Q2: Electricity mix of the 10 most and 10 least renewable countries",
+       subtitle = "Average 2019-2023, countries generating at least 5 TWh",
+       x = "Share of electricity (%)", y = NULL, fill = "Source")
+print(p_q2)
+ggsave("figures/q2_mix_top_bottom.png", p_q2, width = 11, height = 5)
+
+# 4.2d Average mix per group (numbers to quote in the notes)
+q2_groups %>%
+  group_by(group) %>%
+  summarise(across(all_of(q2_mix), ~ round(mean(.x), 1)))
+
+# ------------------------- NOTES - Q2 ---------------------------
+# Among countries generating at least 5 TWh (2019-2023 average), the Top 10 renewable
+# countries are overwhelmingly dominated by hydro (averaging 90.5%), with wind (2.5%)
+# and solar (1.3%) playing much smaller supporting roles. In contrast, the Bottom 10
+# rely almost entirely on fossil fuels, mostly gas (83.8%) and oil (9.3%), along with
+# coal (6.4%), and many are hydrocarbon-producing countries. This suggests that
+# "high-renewable" grids among the top 10 mostly reflect favourable geography for
+# hydropower rather than recent solar and wind expansion.
