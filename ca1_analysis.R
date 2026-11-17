@@ -35,7 +35,7 @@ missing <- df %>%
 print(missing, n = 30)
 
 # --------------- NOTES - SECTION 1 ----------------------------
-# # About half of the columns (64 of 130) are more than 50% missing;
+# About half of the columns (64 of 130) are more than 50% missing;
 # The worst are the derived "*_cons_change_pct" growth-rate columns (e.g. nuclear
 # 86.4%, biofuel 80.5%), so I plan to drop them. The columns I need for my question are
 # well populated: the electricity-share columns (renewables, fossil, coal, solar, wind,
@@ -47,7 +47,6 @@ print(missing, n = 30)
 # ---------- SECTION 2: CLEAN THE COLUMNS (Part i) -------------
 
 # 2.1 Drop columns with more than 50% missing values
-#     (mostly derived growth-rate columns, see Section 1 notes)
 cols_to_drop <- missing %>% filter(pct_missing > 50) %>% pull(column)
 length(cols_to_drop)                       # how many columns dropped
 df_clean <- df %>% select(-all_of(cols_to_drop))
@@ -124,7 +123,7 @@ p <- df_model %>%
 print(p)   # show the plot in the RStudio Plots pane
 ggsave("figures/outliers_boxplot.png", p, width = 8, height = 5)
 
-# 3.4 log check: compare raw vs log1p(energy_per_capita) distribution
+# 3.4 Skewness check: compare raw vs log1p(energy_per_capita)
 p_skew <- df_model %>%
   transmute(raw = energy_per_capita, log_transformed = log1p(energy_per_capita)) %>%
   pivot_longer(everything()) %>%
@@ -451,7 +450,6 @@ ggsave("figures/q6_ireland_trend.png", p_q6b, width = 8, height = 5)
 
 # ---------- SECTION 5: FEATURE ENGINEERING AND ENCODING (Part iii) -------------
 
-install.packages("countrycode")
 library(countrycode)
 
 # 5.1 Add a continent column from the ISO country code (nominal categorical variable)
@@ -517,10 +515,9 @@ df_encoded %>%
 
 # ------------------------- NOTES - SECTION 6 ---------------------------
 # One-hot encoding fits `continent` because continents are nominal categories with no
-# natural ranking—assigning numbers like 1 to 5 would trick algorithms into assuming an
-# artificial order or distance between regions. By contrast, ordinal (label) encoding suits
-# `renewable_group` because low < medium < high has a genuine progression, so mapping it to
-# 1, 2, 3 preserves that ranking in a single column.
+# natural order; assigning numbers like 1 to 5 would imply a false ranking or distance
+# between regions. Ordinal (label) encoding suits `renewable_group` because low < medium
+# < high is ordered, so mapping it to 1, 2, 3 preserves that order in a single column.
 
 
 # ---------- SECTION 7: PREPARING THE DATA FOR PCA (Part iii) -------------
@@ -623,3 +620,68 @@ ggsave("figures/pca_cumulative.png", p_cum, width = 8, height = 5)
 # explain 73.9% of the total variance, giving a compact summary of the 13 variables, although
 # about 26% of the variance is left out; reaching the stricter 80% threshold would require
 # 5 components (80.6%).
+
+
+# ---------- SECTION 9: INTERPRETING THE PCA (Part iii) -------------
+
+# 9.1 Loadings: how strongly each original variable contributes to each component.
+#     Large positive or negative values mean the variable drives that component.
+pca_loadings <- as.data.frame(pca_fit$rotation[, 1:4]) %>%
+  rownames_to_column("variable")
+pca_loadings %>% mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+# 9.2 Plot the loadings of the first four components (the ones we kept)
+p_load <- pca_loadings %>%
+  pivot_longer(starts_with("PC"), names_to = "component", values_to = "loading") %>%
+  ggplot(aes(x = loading, y = fct_reorder(variable, loading), fill = loading > 0)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ component, nrow = 1) +
+  scale_fill_manual(values = c("firebrick", "steelblue")) +
+  labs(title = "PCA loadings of the first four components",
+       x = "Loading", y = NULL)
+print(p_load)
+ggsave("figures/pca_loadings.png", p_load, width = 11, height = 5)
+
+# 9.3 Component scores for every country-year, joined with the categorical columns.
+#     (df_model rows are in the same order as pca_scaled, so the rows line up.)
+pca_scores <- as_tibble(pca_fit$x[, 1:4]) %>%
+  mutate(country = df_model$country, year = df_model$year,
+         continent = df_model$continent, renewable_group = df_model$renewable_group)
+pc_label <- function(i) paste0("PC", i, " (", round(pca_var$variance_pct[i], 1), "% of variance)")
+
+# 9.4 PC1 vs PC2, coloured by renewable_group
+p_pca_group <- ggplot(pca_scores, aes(x = PC1, y = PC2, colour = renewable_group)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "PCA: PC1 vs PC2 coloured by renewable group",
+       x = pc_label(1), y = pc_label(2), colour = "Renewable group")
+print(p_pca_group)
+ggsave("figures/pca_by_renewable_group.png", p_pca_group, width = 8, height = 6)
+
+# 9.5 PC1 vs PC2, coloured by continent
+p_pca_cont <- ggplot(pca_scores, aes(x = PC1, y = PC2, colour = continent)) +
+  geom_point(alpha = 0.5) +
+  labs(title = "PCA: PC1 vs PC2 coloured by continent",
+       x = pc_label(1), y = pc_label(2), colour = "Continent")
+print(p_pca_cont)
+ggsave("figures/pca_by_continent.png", p_pca_cont, width = 8, height = 6)
+
+# 9.6 Average scores per group (numbers to quote in the notes)
+pca_scores %>%
+  group_by(renewable_group) %>%
+  summarise(across(c(PC1, PC2), ~ round(mean(.x), 2)), n = n())
+pca_scores %>%
+  group_by(continent) %>%
+  summarise(across(c(PC1, PC2), ~ round(mean(.x), 2)), n = n())
+
+# ------------------------- NOTES - SECTION 9 ---------------------------
+# PC1 mainly captures the scale and intensity of electricity systems, with strong positive
+# loadings on electricity_generation, greenhouse_gas_emissions, per_capita_electricity and
+# energy_per_capita (plus gas, coal and nuclear shares) and a negative loading on oil share.
+# PC2 contrasts hydro-based grids (hydro_share_elec) with carbon-intensive, oil-heavy grids
+# (carbon_intensity_elec, oil_share_elec). renewable_group separates along PC2, with mean
+# scores rising from low-renewable (-1.26) to medium (0.42) to high-renewable grids (2.18);
+# this is partly by construction, since the group is built from renewable share and hydro
+# drives PC2, so it confirms the Q2 finding. Continents separate mainly along PC1 instead:
+# Europe has the highest mean score (2.54) and Africa (-1.49) and Oceania (-1.27) the lowest,
+# suggesting regional differences in system size and energy use rather than in the clean-vs-
+# carbon-intensive mix, while mean PC2 differs little between continents (-0.76 to 0.60).
