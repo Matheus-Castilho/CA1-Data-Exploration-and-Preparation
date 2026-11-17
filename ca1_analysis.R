@@ -575,3 +575,51 @@ dim(pca_scaled)                            # 4,322 rows x 13 columns
 # solar, nuclear and coal shares remain skewed because many countries have exactly 0%.
 # Finally, I standardised all inputs (mean = 0, SD = 1) because PCA is variance-based and
 # variables like `electricity_generation` have much larger numeric scales than percentage shares.
+
+
+# ---------- SECTION 8: RUNNING THE PCA (Part iii) -------------
+
+# 8.1 Run PCA on the standardised data (already centred and scaled in Section 7)
+pca_fit <- prcomp(pca_scaled, center = FALSE, scale. = FALSE)
+
+# 8.2 Variance explained by each principal component
+pca_var <- tibble(
+  component = factor(paste0("PC", 1:ncol(pca_scaled)), levels = paste0("PC", 1:ncol(pca_scaled))),
+  eigenvalue = pca_fit$sdev^2,                              # variance of each component
+  variance_pct = eigenvalue / sum(eigenvalue) * 100,        # % of total variance
+  cumulative_pct = cumsum(variance_pct)                     # running total
+)
+print(pca_var %>% mutate(across(where(is.numeric), ~ round(.x, 2))), n = 13)
+
+# 8.3 How many components to keep? Three common rules:
+sum(pca_var$eigenvalue > 1)                    # Kaiser rule: eigenvalue above 1
+which(pca_var$cumulative_pct >= 80)[1]         # first component reaching 80% cumulative variance
+# Scree "elbow": look for where the line in the scree plot flattens (next plot)
+
+# 8.4 Scree plot (eigenvalues) with the Kaiser line at 1
+p_scree <- ggplot(pca_var, aes(x = component, y = eigenvalue, group = 1)) +
+  geom_line() +
+  geom_point(size = 2) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "red") +
+  labs(title = "PCA scree plot", subtitle = "Dashed line: Kaiser rule (eigenvalue = 1)",
+       x = NULL, y = "Eigenvalue")
+print(p_scree)
+ggsave("figures/pca_scree.png", p_scree, width = 8, height = 5)
+
+# 8.5 Cumulative variance explained, with an 80% reference line
+p_cum <- ggplot(pca_var, aes(x = component, y = cumulative_pct, group = 1)) +
+  geom_line() +
+  geom_point(size = 2) +
+  geom_hline(yintercept = 80, linetype = "dashed", colour = "red") +
+  labs(title = "PCA: cumulative variance explained", subtitle = "Dashed line: 80%",
+       x = NULL, y = "Cumulative variance explained (%)")
+print(p_cum)
+ggsave("figures/pca_cumulative.png", p_cum, width = 8, height = 5)
+
+# ------------------------- NOTES - SECTION 8 ---------------------------
+# I decided to keep the first 4 principal components using the Kaiser rule (eigenvalue > 1,
+# i.e. each component explains more variance than a single standardised variable), which is
+# close to the elbow in the scree plot where the curve flattens. Together these 4 components
+# explain 73.9% of the total variance, giving a compact summary of the 13 variables, although
+# about 26% of the variance is left out; reaching the stricter 80% threshold would require
+# 5 components (80.6%).
