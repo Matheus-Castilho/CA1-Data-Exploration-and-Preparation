@@ -447,3 +447,73 @@ ggsave("figures/q6_ireland_trend.png", p_q6b, width = 8, height = 5)
 # possibly because demand grew faster than hydro capacity or fossil generation was expanded
 # (not tested). Because this compares only two years, rainfall variation in hydro output
 # may exaggerate some changes.
+
+
+# ---------- SECTION 5: FEATURE ENGINEERING AND ENCODING (Part iii) -------------
+
+install.packages("countrycode")
+library(countrycode)
+
+# 5.1 Add a continent column from the ISO country code (nominal categorical variable)
+df_model <- df_model %>%
+  mutate(continent = countrycode(iso_code, origin = "iso3c", destination = "continent"))
+
+# 5.2 Check that every country was matched to a continent
+sum(is.na(df_model$continent))                       # should be 0
+df_model %>% filter(is.na(continent)) %>% distinct(country, iso_code)
+table(df_model$continent)                            # rows per continent
+df_model %>% group_by(continent) %>% summarise(n_countries = n_distinct(country))
+
+# 5.3 Add an ordered renewable_group column (ordinal categorical variable)
+#     low: up to 20%, medium: above 20% and up to 60%, high: above 60%
+#     NOTE: derived from renewables_share_elec, so it must NOT be used as a PCA input.
+#     It is only used to colour and interpret the PCA results.
+df_model <- df_model %>%
+  mutate(renewable_group = cut(renewables_share_elec,
+                               breaks = c(-Inf, 20, 60, Inf),
+                               labels = c("low", "medium", "high"),
+                               ordered_result = TRUE))
+
+# 5.4 Check group sizes
+table(df_model$renewable_group)
+round(prop.table(table(df_model$renewable_group)) * 100, 1)
+
+# ------------------------- NOTES - SECTION 5 ---------------------------
+# I added `continent` as a nominal grouping variable to see whether regional geography
+# explains clusters in the later PCA, and `renewable_group` as an ordinal label to colour
+# and compare low-, medium- and high-renewable systems without double-counting
+# renewables_share_elec in the PCA inputs. The 20% and 60% cut-offs are a judgement call:
+# 20% is roughly the overall median (so the low group is about half the data), and the
+# cut-offs give three usable groups (about 50%, 26% and 24% of rows) separating
+# low-renewable grids from mixed grids (20-60%) and renewable-dominant systems (>60%).
+
+
+# ---------- SECTION 6: ENCODING SCHEMES (Part iii) -------------
+
+# 6.1 One-hot encoding of continent (nominal: the continents have no natural order).
+#     model.matrix() creates one 0/1 column per continent ("- 1" keeps all five columns).
+continent_onehot <- model.matrix(~ continent - 1, data = df_model) %>%
+  as.data.frame()
+names(continent_onehot) <- str_replace(names(continent_onehot), "^continent", "continent_")
+
+# 6.2 Check the one-hot columns: every row must contain exactly one 1,
+#     and the column totals must match the continent counts from Section 5
+table(rowSums(continent_onehot))
+colSums(continent_onehot)
+table(df_model$continent)
+
+# 6.3 Ordinal (label) encoding of renewable_group (ordered: low < medium < high)
+#     as.integer() on an ordered factor gives low = 1, medium = 2, high = 3
+df_encoded <- bind_cols(df_model, continent_onehot) %>%
+  mutate(renewable_group_num = as.integer(renewable_group))
+
+# 6.4 Check the ordinal encoding and look at the encoded dataset
+table(df_encoded$renewable_group, df_encoded$renewable_group_num)
+dim(df_encoded)
+df_encoded %>%
+  select(country, year, continent, starts_with("continent_"),
+         renewable_group, renewable_group_num) %>%
+  head()
+
+# TODO (yours): write 2-3 sentences explaining why one-hot suits continent and
+#   ordinal (label) encoding suits renewable_group.
