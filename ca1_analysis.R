@@ -381,3 +381,69 @@ q5_data %>%
 # low-carbon grid (under 150 gCO2/kWh) but a renewable share below 50% are France and
 # Belgium (about 23% and 26% renewable). Colouring by nuclear share explains why: nuclear
 # supplies about 67% and 45% of their electricity, which is low-carbon but not renewable.
+
+
+# Q6. Which countries are unusual, and where does Ireland fit?
+
+# 4.6a Change in renewable share between 2000 and 2023 (percentage points).
+#      Countries need data in both years and at least 5 TWh generation in 2023.
+q6_change <- df_model %>%
+  filter(year %in% c(2000, 2023)) %>%
+  select(country, year, renewables_share_elec, wind_share_elec, solar_share_elec,
+         electricity_generation) %>%
+  pivot_wider(names_from = year,
+              values_from = c(renewables_share_elec, wind_share_elec, solar_share_elec,
+                              electricity_generation)) %>%
+  drop_na() %>%
+  filter(electricity_generation_2023 >= 5) %>%
+  mutate(change = renewables_share_elec_2023 - renewables_share_elec_2000,
+         wind_change = wind_share_elec_2023 - wind_share_elec_2000,
+         solar_change = solar_share_elec_2023 - solar_share_elec_2000)
+nrow(q6_change)                                # countries compared
+median(q6_change$change)                       # typical change
+
+# 4.6b Biggest gainers (bar chart, Ireland highlighted)
+q6_top <- q6_change %>% slice_max(change, n = 10, with_ties = FALSE)
+p_q6a <- ggplot(q6_top, aes(x = change, y = fct_reorder(country, change),
+                            fill = country == "Ireland")) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_manual(values = c("grey60", "darkgreen")) +
+  labs(title = "Q6: Biggest increases in renewable share of electricity, 2000 to 2023",
+       subtitle = "Percentage-point change, countries generating at least 5 TWh in 2023",
+       x = "Change in renewables share (percentage points)", y = NULL)
+print(p_q6a)
+ggsave("figures/q6_biggest_gains.png", p_q6a, width = 8, height = 5)
+
+# 4.6c What drove the gains? (wind and solar change for the top 10) and the biggest falls
+q6_top %>%
+  transmute(country, change = round(change, 1), wind = round(wind_change, 1),
+            solar = round(solar_change, 1))
+q6_change %>% slice_min(change, n = 4, with_ties = FALSE) %>%
+  transmute(country, share_2000 = round(renewables_share_elec_2000, 1),
+            share_2023 = round(renewables_share_elec_2023, 1), change = round(change, 1))
+
+# 4.6d Dublin angle: Ireland vs the median country, 2000-2023
+q6_ireland <- df_model %>%
+  filter(country == "Ireland", year <= 2023) %>%
+  select(year, `Ireland: renewables` = renewables_share_elec,
+         `Ireland: wind only` = wind_share_elec) %>%
+  left_join(select(q1_yearly, year, `Median country: renewables` = median_share),
+            by = "year") %>%
+  pivot_longer(-year, names_to = "series", values_to = "share")
+p_q6b <- ggplot(q6_ireland, aes(x = year, y = share, colour = series)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Q6: Ireland's renewable and wind share vs the median country",
+       x = "Year", y = "Share of electricity (%)", colour = NULL)
+print(p_q6b)
+ggsave("figures/q6_ireland_trend.png", p_q6b, width = 8, height = 5)
+
+# ------------------------- NOTES - Q6 ---------------------------
+# Compared to the typical country (median change of +2.5 percentage points between 2000 and
+# 2023), the top 10 gainers saw large shifts, led by Denmark (+70.9 pp). Most were driven by
+# wind and solar expansion, with exceptions such as Sudan, whose gain was mostly hydro.
+# Ireland ranks #7 of 91 (+40.2 pp), and nearly all of its growth came from wind (+36.5 pp);
+# it moved ahead of the median country from 2011 onwards. On the flip side, some formerly
+# hydro-dominated countries such as Congo (100% to 23.5%) saw their renewable share drop,
+# possibly because demand grew faster than hydro capacity or fossil generation was expanded
+# (not tested). Because this compares only two years, rainfall variation in hydro output
+# may exaggerate some changes.
