@@ -141,3 +141,47 @@ ggsave("figures/energy_log_check.png", p_skew, width = 8, height = 4)
 # legitimately have very high energy_per_capita). Removing them would drop valid cases
 # from the analysis. Instead, I will apply a log transformation to skewed variables
 # before running PCA so extreme values do not dominate the components.
+
+# ---------- SECTION 4: EXPLORATORY DATA ANALYSIS (Part ii) -------------
+
+# Q1. How does the renewable share of electricity vary across countries,
+#     and how has the global median changed from 2000 to 2023?
+
+# 4.1a Variation: distribution of renewables_share_elec across all country-years
+p_q1a <- ggplot(df_model, aes(x = renewables_share_elec)) +
+  geom_histogram(bins = 30) +
+  labs(title = "Q1: Distribution of renewable share of electricity",
+       x = "Renewables share of electricity (%)", y = "Count of country-years")
+print(p_q1a)
+ggsave("figures/q1_renewables_hist.png", p_q1a, width = 8, height = 5)
+
+# 4.1b Change over time: yearly median (line) with the middle 50% of countries (ribbon)
+# NOTE: 2024 has only 55 countries (vs ~180 in other years) after removing rows with
+#       missing values, so its median is not comparable. We stop the trend at 2023.
+q1_yearly <- df_model %>%
+  filter(year <= 2023) %>%
+  group_by(year) %>%
+  summarise(median_share = median(renewables_share_elec),
+            q25 = quantile(renewables_share_elec, 0.25),
+            q75 = quantile(renewables_share_elec, 0.75),
+            n_countries = n())
+p_q1b <- ggplot(q1_yearly, aes(x = year)) +
+  geom_ribbon(aes(ymin = q25, ymax = q75), alpha = 0.3) +
+  geom_line(aes(y = median_share), linewidth = 1) +
+  labs(title = "Q1: Median renewable share of electricity, 2000-2023",
+       subtitle = "Line = median across countries, band = middle 50% of countries",
+       x = "Year", y = "Renewables share of electricity (%)")
+print(p_q1b)
+ggsave("figures/q1_renewables_trend.png", p_q1b, width = 8, height = 5)
+
+# 4.1c Key numbers to quote in the notes
+q1_yearly %>% filter(year %in% c(2000, 2023))
+
+# ------------------------- NOTES - Q1 ---------------------------
+# Renewable share is polarised across country-years: about a third of observations are
+# below 5% and about 15% are above 80% (possibly hydro-heavy countries, to be checked in Q2).
+# The yearly median roughly doubled from 14.2% in 2000 to 27.3% in 2023, driven mostly by
+# the bottom of the distribution: the lower quartile rose from 0% to 7.6%, while the upper
+# quartile stayed around 62-63%. Even so, in 2023 half of countries still produced less than
+# about 27% of their electricity from renewables. 2024 was excluded because only 55
+# countries remained after cleaning, so its median is not comparable.
