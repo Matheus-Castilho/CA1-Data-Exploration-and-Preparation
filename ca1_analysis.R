@@ -515,5 +515,63 @@ df_encoded %>%
          renewable_group, renewable_group_num) %>%
   head()
 
-# TODO (yours): write 2-3 sentences explaining why one-hot suits continent and
-#   ordinal (label) encoding suits renewable_group.
+# ------------------------- NOTES - SECTION 6 ---------------------------
+# One-hot encoding fits `continent` because continents are nominal categories with no
+# natural ranking—assigning numbers like 1 to 5 would trick algorithms into assuming an
+# artificial order or distance between regions. By contrast, ordinal (label) encoding suits
+# `renewable_group` because low < medium < high has a genuine progression, so mapping it to
+# 1, 2, 3 preserves that ranking in a single column.
+
+
+# ---------- SECTION 7: PREPARING THE DATA FOR PCA (Part iii) -------------
+
+# 7.1 Choose the PCA input variables (13 numeric columns).
+#     Included: the eight electricity-source shares, carbon intensity, and size / usage variables.
+#     Excluded: renewables_share_elec, fossil_share_elec and low_carbon_share_elec (they are
+#     sums of the source shares, so they would duplicate information; renewables_share_elec
+#     also defines renewable_group), net imports and the *_change_* columns (negative values),
+#     and all the categorical / ID columns (country, iso_code, year, continent, renewable_group).
+pca_vars <- c("coal_share_elec", "gas_share_elec", "oil_share_elec", "nuclear_share_elec",
+              "hydro_share_elec", "wind_share_elec", "solar_share_elec",
+              "other_renewables_share_elec", "carbon_intensity_elec",
+              "energy_per_capita", "per_capita_electricity",
+              "electricity_generation", "greenhouse_gas_emissions")
+
+# 7.2 Skewness of each variable before transforming (0 = symmetric, >1 = strongly right-skewed)
+skew <- function(x) mean((x - mean(x))^3) / sd(x)^3
+skew_before <- sapply(df_model[pca_vars], skew)
+
+# 7.3 Apply log1p to the strongly skewed variables (skewness > 1).
+#     log1p(x) = log(1 + x) is safe here because all values are zero or positive.
+stopifnot(all(df_model[pca_vars] >= 0))
+skewed_vars <- names(skew_before[skew_before > 1])
+pca_data <- df_model %>%
+  select(all_of(pca_vars)) %>%
+  mutate(across(all_of(skewed_vars), log1p))
+
+# 7.4 Compare skewness before and after the transformation
+data.frame(variable = pca_vars,
+           skew_before = round(skew_before, 2),
+           skew_after = round(sapply(pca_data, skew), 2),
+           log1p_applied = pca_vars %in% skewed_vars,
+           row.names = NULL)
+
+# 7.5 Standardise: mean 0 and standard deviation 1 for every column, so that no variable
+#     dominates the PCA just because it is measured on a larger scale
+pca_scaled <- scale(pca_data)
+round(colMeans(pca_scaled), 6)             # all should be 0
+round(apply(pca_scaled, 2, sd), 6)         # all should be 1
+dim(pca_scaled)                            # 4,322 rows x 13 columns
+
+# ------------------------- NOTES - SECTION 7 ---------------------------
+# I included the 8 individual electricity-source shares alongside carbon intensity and
+# size/usage metrics (13 numeric variables), and excluded aggregate shares such as
+# `renewables_share_elec` and `fossil_share_elec` because they are sums of the source shares
+# (redundant) and `renewables_share_elec` defines `renewable_group` (double-counting). Net
+# imports and the *_change_* columns were excluded because they contain negative values.
+# For strongly right-skewed variables (skewness > 1) I applied `log1p()` so extreme country
+# values do not dominate the principal components, while safely handling zeros. This worked
+# well for size and usage variables (e.g. energy_per_capita skewness 6.1 to -0.4) but wind,
+# solar, nuclear and coal shares remain skewed because many countries have exactly 0%.
+# Finally, I standardised all inputs (mean = 0, SD = 1) because PCA is variance-based and
+# variables like `electricity_generation` have much larger numeric scales than percentage shares.
