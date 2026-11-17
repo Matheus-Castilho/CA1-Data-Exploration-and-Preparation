@@ -84,3 +84,60 @@ n_distinct(df_model$country)
 # 4,322 complete rows (184 countries, 2000-2024) with no NAs. gdp is also ~32% missing
 # and less relevant, since my question focuses on the electricity mix, not national wealth.
 
+
+
+# ---------- SECTION 3: OUT-OF-RANGE VALUES AND OUTLIERS (Part i) -------------
+
+# 3.1 Out-of-range check: shares are percentages, so they must be between 0 and 100,
+#     and energy/emission/population values cannot be negative
+share_cols <- names(df_model) %>% str_subset("_share_")
+df_model %>%
+  summarise(across(all_of(share_cols), list(min = min, max = max))) %>%
+  pivot_longer(everything(), names_to = c("column", ".value"),
+               names_pattern = "(.*)_(min|max)") %>%
+  filter(min < 0 | max > 100)               # rows listed here are out of range
+
+# 3.2 Count outliers per numeric column using the IQR rule (1.5 x IQR)
+count_outliers <- function(x) {
+  q <- quantile(x, c(0.25, 0.75))
+  iqr <- q[2] - q[1]
+  sum(x < q[1] - 1.5 * iqr | x > q[2] + 1.5 * iqr)
+}
+outlier_counts <- df_model %>%
+  select(where(is.numeric), -year) %>%
+  summarise(across(everything(), count_outliers)) %>%
+  pivot_longer(everything(), names_to = "column", values_to = "n_outliers") %>%
+  mutate(pct_outliers = round(n_outliers / nrow(df_model) * 100, 1)) %>%
+  arrange(desc(n_outliers))
+print(outlier_counts, n = 15)
+
+# 3.3 Boxplots of a few key variables (saved for the poster)
+dir.create("figures", showWarnings = FALSE)
+p <- df_model %>%
+  select(renewables_share_elec, fossil_share_elec, carbon_intensity_elec,
+         energy_per_capita) %>%
+  pivot_longer(everything()) %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~ name, scales = "free") +
+  labs(title = "Outlier check - key variables", x = NULL, y = NULL)
+print(p)   # show the plot in the RStudio Plots pane
+ggsave("figures/outliers_boxplot.png", p, width = 8, height = 5)
+
+# 3.4 log check: compare raw vs log1p(energy_per_capita) distribution
+p_skew <- df_model %>%
+  transmute(raw = energy_per_capita, log_transformed = log1p(energy_per_capita)) %>%
+  pivot_longer(everything()) %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 30) +
+  facet_wrap(~ name, scales = "free") +
+  labs(title = "Skewness check: energy_per_capita (raw vs log1p)", x = NULL, y = "Count")
+print(p_skew)
+ggsave("figures/energy_log_check.png", p_skew, width = 8, height = 4)
+
+# ------------------------- NOTES - SECTION 3 ---------------------------
+# I decided to keep all the outliers because they represent real country-level values
+# rather than data entry errors (for example, small high-income or industrial nations
+# legitimately have very high energy_per_capita). Removing them would drop valid cases
+# from the analysis. Instead, I will apply a log transformation to skewed variables
+# before running PCA so extreme values do not dominate the components.
