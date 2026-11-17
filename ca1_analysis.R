@@ -288,3 +288,50 @@ q3_data %>%
 # countries such as Qatar, Bahrain and Kuwait near 0% renewables, and hydro-rich nations
 # such as Iceland and Norway near 100%. This is a correlation, not proof that energy use
 # drives the renewable share.
+
+
+# Q4. Which electricity-source shares move together?
+
+# 4.4a Variables: the individual source shares, the two summary shares and carbon intensity
+q4_vars <- c("coal_share_elec", "gas_share_elec", "oil_share_elec", "nuclear_share_elec",
+             "hydro_share_elec", "wind_share_elec", "solar_share_elec",
+             "other_renewables_share_elec", "renewables_share_elec", "fossil_share_elec",
+             "carbon_intensity_elec")
+
+# 4.4b Spearman correlation matrix (rank-based, because several variables are skewed)
+q4_cor <- cor(df_model[q4_vars], method = "spearman")
+round(q4_cor, 2)
+
+# 4.4c Heatmap of the correlation matrix
+q4_long <- as.data.frame(as.table(q4_cor)) %>%
+  rename(var1 = Var1, var2 = Var2, correlation = Freq) %>%
+  mutate(var1 = str_remove(var1, "_elec|_share"),
+         var2 = str_remove(var2, "_elec|_share"))
+p_q4 <- ggplot(q4_long, aes(x = var1, y = var2, fill = correlation)) +
+  geom_tile() +
+  geom_text(aes(label = round(correlation, 2)), size = 3) +
+  scale_fill_gradient2(low = "firebrick", mid = "white", high = "steelblue",
+                       limits = c(-1, 1)) +
+  labs(title = "Q4: Spearman correlation between electricity-source shares",
+       subtitle = "All country-years, 2000-2024 (n = 4,322)", x = NULL, y = NULL) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+print(p_q4)
+ggsave("figures/q4_correlation_heatmap.png", p_q4, width = 9, height = 7)
+
+# 4.4d Strongest pairs (each pair listed once), to quote in the notes
+as.data.frame(as.table(q4_cor)) %>%
+  filter(as.character(Var1) < as.character(Var2)) %>%
+  mutate(correlation = round(Freq, 2)) %>%
+  arrange(desc(abs(correlation))) %>%
+  select(Var1, Var2, correlation) %>%
+  head(10)
+
+# ------------------------- NOTES - Q4 ---------------------------
+# The strongest correlations are mostly compositional trade-offs: hydro and fossil share
+# are strongly negatively correlated (r = -0.91), since electricity shares sum to 100% and
+# countries with large hydro resources need less fossil generation. Wind and solar share are
+# moderately positively correlated (r = 0.48), suggesting countries tend to deploy both.
+# Unexpectedly, wind and coal are also positively correlated (r = 0.43) rather than negative;
+# one possible explanation is that large industrialised grids use both, but this was not tested.
+# Summary variables (renewables, fossil) are built from the others, so their strong pairs are
+# partly by construction.
