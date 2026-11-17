@@ -245,3 +245,46 @@ q2_groups %>%
 # coal (6.4%), and many are hydrocarbon-producing countries. This suggests that
 # "high-renewable" grids among the top 10 mostly reflect favourable geography for
 # hydropower rather than recent solar and wind expansion.
+
+# Q3. Is higher energy use per person linked to a higher or lower renewable share?
+
+# 4.3a One row per country: average 2019-2023, same 5 TWh filter as Q2
+q3_data <- df_model %>%
+  filter(year %in% 2019:2023) %>%
+  group_by(country) %>%
+  summarise(renewables = mean(renewables_share_elec),
+            energy_per_capita = mean(energy_per_capita),
+            avg_generation = mean(electricity_generation)) %>%
+  filter(avg_generation >= 5)
+
+# 4.3b Strength of the relationship. Spearman (rank) correlation is used because
+#      energy_per_capita is heavily skewed (see Section 3).
+cor(log10(q3_data$energy_per_capita), q3_data$renewables, method = "spearman")
+
+# 4.3c Scatter plot with a smooth trend line (log scale on the x-axis)
+p_q3 <- ggplot(q3_data, aes(x = energy_per_capita, y = renewables)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  scale_x_log10(labels = scales::comma) +
+  labs(title = "Q3: Energy use per person vs renewable share of electricity",
+       subtitle = "One point per country, average 2019-2023, countries generating at least 5 TWh",
+       x = "Energy per capita (log scale)", y = "Renewables share of electricity (%)")
+print(p_q3)
+ggsave("figures/q3_energy_vs_renewables.png", p_q3, width = 8, height = 5)
+
+# 4.3d Median renewable share by energy-use band (numbers to quote in the notes)
+q3_data %>%
+  mutate(energy_band = cut(energy_per_capita, c(0, 10000, 30000, 60000, Inf),
+                           labels = c("<10k", "10-30k", "30-60k", ">60k"))) %>%
+  group_by(energy_band) %>%
+  summarise(n = n(), median_renewables = round(median(renewables), 1))
+
+# ------------------------- NOTES - Q3 ---------------------------
+# There is a weak negative relationship between energy use per person and renewable share
+# (Spearman r = -0.33, 101 countries generating at least 5 TWh). The median renewable share
+# is highest in the lowest-use band (59.0% for <10k) and lowest in the top band (1.1% for
+# >60k, only 11 countries), though the middle bands are similar (33-37%), so the decline
+# is not smooth. At the very top end, countries split into two extremes: oil/gas-producing
+# countries such as Qatar, Bahrain and Kuwait near 0% renewables, and hydro-rich nations
+# such as Iceland and Norway near 100%. This is a correlation, not proof that energy use
+# drives the renewable share.
