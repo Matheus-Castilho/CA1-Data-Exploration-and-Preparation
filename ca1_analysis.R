@@ -335,3 +335,49 @@ as.data.frame(as.table(q4_cor)) %>%
 # one possible explanation is that large industrialised grids use both, but this was not tested.
 # Summary variables (renewables, fossil) are built from the others, so their strong pairs are
 # partly by construction.
+
+
+# Q5. Are low-carbon electricity grids really the high-renewable ones?
+
+# 4.5a One row per country: average 2019-2023, same 5 TWh filter as Q2 and Q3
+q5_data <- df_model %>%
+  filter(year %in% 2019:2023) %>%
+  group_by(country) %>%
+  summarise(renewables = mean(renewables_share_elec),
+            fossil = mean(fossil_share_elec),
+            nuclear = mean(nuclear_share_elec),
+            carbon_intensity = mean(carbon_intensity_elec),   # gCO2 per kWh
+            avg_generation = mean(electricity_generation)) %>%
+  filter(avg_generation >= 5)
+
+# 4.5b Correlation of carbon intensity with renewable share and with fossil share
+cor(q5_data$carbon_intensity, q5_data$renewables, method = "spearman")
+cor(q5_data$carbon_intensity, q5_data$fossil, method = "spearman")
+
+# 4.5c Scatter: carbon intensity vs renewable share, coloured by nuclear share.
+#      Nuclear is the missing piece: it is low-carbon but not renewable.
+p_q5 <- ggplot(q5_data, aes(x = renewables, y = carbon_intensity, colour = nuclear)) +
+  geom_point(size = 2, alpha = 0.8) +
+  geom_text(data = filter(q5_data, country %in% c("France", "Belgium")),
+            aes(label = country), vjust = -1, colour = "black", size = 3) +
+  scale_colour_viridis_c(name = "Nuclear share (%)") +
+  labs(title = "Q5: Carbon intensity of electricity vs renewable share",
+       subtitle = "One point per country, average 2019-2023, countries generating at least 5 TWh",
+       x = "Renewables share of electricity (%)", y = "Carbon intensity (gCO2 per kWh)")
+print(p_q5)
+ggsave("figures/q5_carbon_vs_renewables.png", p_q5, width = 8, height = 5.5)
+
+# 4.5d Low-carbon grids (under 150 gCO2/kWh) that are NOT mostly renewable
+q5_data %>%
+  filter(carbon_intensity < 150, renewables < 50) %>%
+  arrange(carbon_intensity) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 1)))
+
+# ------------------------- NOTES - Q5 ---------------------------
+# There is a strong negative correlation between renewable share and carbon intensity
+# (Spearman r = -0.88), so higher renewable shares are associated with much cleaner grids;
+# fossil share is an even stronger correlate (r = 0.96), partly by construction since
+# carbon intensity is calculated from fossil generation. The only two countries with a
+# low-carbon grid (under 150 gCO2/kWh) but a renewable share below 50% are France and
+# Belgium (about 23% and 26% renewable). Colouring by nuclear share explains why: nuclear
+# supplies about 67% and 45% of their electricity, which is low-carbon but not renewable.
