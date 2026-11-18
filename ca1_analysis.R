@@ -2,9 +2,8 @@
 # CA1 - Data Exploration & Preparation (Energy domain)
 # Dataset: Our World in Data (OWID) energy dataset
 # Source:  https://github.com/owid/energy-data
-# Research question (draft): What distinguishes high-renewable
+# Research question: What distinguishes high-renewable
 #   electricity systems from fossil-dependent ones?
-# Run with the working directory set to the CA1_DE folder.
 # =============================================================
 
 library(tidyverse)
@@ -79,7 +78,7 @@ n_distinct(df_model$country)
 # Dropping all rows with missing values after removing the >50% empty columns left only
 # 2,326 rows (below the 3,000 minimum). Dropping gdp alone did not help (still 2,326),
 # because coal/gas/oil production are blank for non-producing countries.
-# I therefore dropped the production columns along with gdp and energy_per_gdp, leaving
+# So I dropped the production columns along with gdp and energy_per_gdp, leaving
 # 4,322 complete rows (184 countries, 2000-2024) with no NAs. gdp is also ~32% missing
 # and less relevant, since my question focuses on the electricity mix, not national wealth.
 
