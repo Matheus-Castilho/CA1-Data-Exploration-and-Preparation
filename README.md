@@ -22,5 +22,4 @@ Sub-questions:
 
 ## Video
 
-Google Drive video link: PASTE-LINK-HERE
-(sharing set to "Anyone with the link can view")
+Google Drive video link: https://drive.google.com/file/d/15tDOrundTP0Gw4PE98LTGgNZArdfgOSz/view?usp=drive_link
